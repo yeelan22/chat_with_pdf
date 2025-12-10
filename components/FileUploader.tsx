@@ -2,6 +2,7 @@
 
 import type { JSX } from "react";
 import { useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import {
   CheckCircleIcon,
@@ -13,7 +14,14 @@ import {
 import useUpload, { StatusText } from "@/hooks/useUpload";
 
 const FileUploader = () => {
-  const { progress, status, handleUpload } = useUpload();
+  const { progress, status, handleUpload, fileId } = useUpload();
+  const router = useRouter();
+  
+  useEffect(() => {
+    if (fileId) {
+      router.push(`/dashboard/files/${fileId}`);
+    }
+  }, [fileId, router]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];

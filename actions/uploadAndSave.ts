@@ -35,13 +35,14 @@ export async function uploadFile(file: File) {
   // 5️⃣ Prepare metadata
   const metadata = {
     userId,
-    fileId: fileId,
+    fileId,
     name: file.name,
-    size: file.size,
     type: file.type,
-    downloadUrl: storage.getFileView(appwriteConfig.bucketID!, uploaded.$id),
-    createdAt: new Date().toISOString(),
+    size: file.size,
+    storagePath: `pdfs/${userId}/${fileId}`,  // or any path you want
+    downloadUrl: storage.getFileView(appwriteConfig.bucketID!, fileId),
   };
+  
 
   // 6️⃣ Validate metadata
   const validated = FileMetadataSchema.parse(metadata);
@@ -63,5 +64,6 @@ export async function uploadFile(file: File) {
     success:true,
     uploaded,
     metadata: savedDoc,
+    fileId: metadata.fileId,
   };
 }

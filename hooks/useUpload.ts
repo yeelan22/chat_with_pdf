@@ -16,6 +16,7 @@ export type Status = StatusText[keyof StatusText];
 export default function () {
   const [status, setStatus] = useState<Status | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [fileId, setFileId] = useState<string | null>(null);
   
 
   const handleUpload = async (file: File) => {
@@ -23,14 +24,18 @@ export default function () {
     setProgress(30);
 
     const res = await uploadFile(file);
+    setFileId(res.metadata.$id);
     setProgress(100);
     setStatus(StatusText.UPLOADED);
     setStatus(StatusText.SAVING);
+    setStatus(StatusText.GENERATING);
+    //generate Ai embeddings
     return res;
 };
   return{
     status,
     progress,
+    fileId,
     handleUpload,
   };
 }
