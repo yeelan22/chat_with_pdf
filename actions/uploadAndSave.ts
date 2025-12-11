@@ -33,6 +33,7 @@ export async function uploadFile(file: File) {
   );
  
   // 5️⃣ Prepare metadata
+   const downloadUrl = `${appwriteConfig.endpoint}/storage/buckets/${appwriteConfig.bucketID}/files/${fileId}/view?project=${appwriteConfig.projectId}`;
   const metadata = {
     userId,
     fileId,
@@ -40,7 +41,7 @@ export async function uploadFile(file: File) {
     type: file.type,
     size: file.size,
     storagePath: `pdfs/${userId}/${fileId}`,  // or any path you want
-    downloadUrl: storage.getFileView(appwriteConfig.bucketID!, fileId),
+    downloadUrl,
   };
   
 

@@ -1,6 +1,7 @@
 'use server'
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { generateEmbeddingsInPineconeVectoreStore } from "@/lib/langchain";
 export async function generateEmbeddings(docId: string) {
     //1-protect this route with clerck
    const { userId } = await auth();

@@ -1,154 +1,169 @@
 import { ChatMistralAI } from "@langchain/mistralai";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import {recursiveCharacterTextSplitter} from "langchain/text_splitter";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { pipeline } from "@xenova/transformers";
-import { createStuffDocumentsChain } from "langchain/chains/combine_documents"
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { createRetrievalChain } from "langchain/chains/retrieval";
-import { createHistoryAwareRetriever } from "langchain/chains/histpry_aware_retriever";
-import { HumanMessage, AIMessage } from "@langchain/core/messages"
 import { Embeddings } from "@langchain/core/embeddings";
-import pinconeClient from "./pinecone"
 import { PineconeStore } from "@langchain/pinecone";
-import { PineconeConflictError } from "@pinecone-database/pinecone/dist/errors";
-import { Index, RecordMetadata } from "@pinecone-database/pinecone"
 import { auth } from "@clerk/nextjs/server";
-//import admin from appwrite
-import { appwriteConfig } from "./appwriteConfig";
-import { getServerClients } from "./appwriteServerClients";
+import pinconeClient from "./pinecone";
 
-//Initialize the Mistral AI model
-const model = new ChatMistralAI({
-    apiKey: process.env.MISTRALAI_API_KEY,
-    modelName: "mistral-7b-instruct-v0.1",
-});
-//Initialize the Xenova pipeline for embeddings
+import { appwriteConfig } from "./appwriteConfig";
+import { getServerClients } from "./appwriteServer";
+import { Index, RecordMetadata } from "@pinecone-database/pinecone";
+
+export const indexName = "papafam";
+
+/* -------------------------------------------------------
+   Embeddings Class (Xenova)
+------------------------------------------------------- */
 const extractor = await pipeline(
-    "feature-extraction",
-    "Xenova/all-MiniLM-L6-v2",
-    { quantized: true }
-  );
+  "feature-extraction",
+  "Xenova/all-MiniLM-L6-v2",
+  { quantized: true }
+);
 
 class XenovaEmbeddings extends Embeddings {
-    constructor() {
-        super({});
-    }
-    
-    async embedDocuments(texts: string[]): Promise<number[][]> {
-        const embeddings = await Promise.all(
-            texts.map(async (text) => {
-                const output = await extractor(text, {
-                    pooling: "mean",
-                    normalize: true,
-                });
-                return Array.from(output.data) as number[];
-            })
-        );
-        return embeddings;
-    }
+  constructor() {
+    super({});
+  }
 
-    async embedQuery(text: string): Promise<number[]> {
+  async embedDocuments(texts: string[]): Promise<number[][]> {
+    return Promise.all(
+      texts.map(async (text) => {
         const output = await extractor(text, {
-            pooling: "mean",
-            normalize: true,
+          pooling: "mean",
+          normalize: true,
         });
-        return Array.from(output.data) as number[];
-    }
+        return Array.from(output.data);
+      })
+    );
+  }
+
+  async embedQuery(text: string): Promise<number[]> {
+    const output = await extractor(text, {
+      pooling: "mean",
+      normalize: true,
+    });
+    return Array.from(output.data);
+  }
 }
 
 const embeddings = new XenovaEmbeddings();
 
-export const indexName = "papafam";
-
-async function nameSpaceExists(index: Index<RecordMetadata>, namespace: string) {
-    if (namespace === null) throw new Error("no namespace value provided");
-    //index.describeIndexStats() returns metadata about the index, including all namespaces.
-    const { namespaces } = await index.describeIndexStats();
-    return namespaces?.[namespace] !== undefined;
-
+/* -------------------------------------------------------
+   Check if Pinecone namespace exists
+------------------------------------------------------- */
+async function namespaceExists(
+  index: Index<RecordMetadata>,
+  namespace: string
+) {
+  if (!namespace) throw new Error("Missing namespace");
+  const { namespaces } = await index.describeIndexStats();
+  return namespaces?.[namespace] !== undefined;
 }
+
+/* -------------------------------------------------------
+   Load + Split PDF into chunks
+------------------------------------------------------- */
 async function generateDocs(docId: string) {
-    //verify user auth state
-    const { userId } = await auth();
-    if (!userId) throw new Error("User Not Found");
-    console.log("fetching the download URL from appwrite");
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  console.log("✅ User authenticated:", userId);
 
-    //fetch pdf download URL from appwrite
-    const { db } = await getServerClients();
+  console.log("📄 Fetching PDF metadata from Appwrite...");
+  const { db, storage } = await getServerClients();
 
-    const { downloadUrl } = await db.getDocument(
-        appwriteConfig.databaseId!,
-        appwriteConfig.pdfsCollectionId!,
-        docId
-    )
-    
-  if (!downloadUrl) throw new Error("downloadUrl not found");
-  console.log("Download URL:", downloadUrl);
-    
-    //Load the PDF document into a PDFDocument object
-    const response = await fetch(downloadUrl);
-    const data = await response.blob();
+  // 1️⃣ Get document metadata
+  const doc = await db.getDocument(
+    appwriteConfig.databaseId!,
+    appwriteConfig.pdfsCollectionId!,
+    docId
+  );
+  console.log("Document fetched from DB:", doc);
 
-   //Load the PDF document the specified path
-   console.log("___ Loading PDF document ...___");
-   const loader = new PDFLoader(data);
-   const docs = await loader.load();
+  const { fileId } = doc;
+  if (!fileId) throw new Error("No fileId found in document");
 
-   //Split the document into smaller chunks
-   console.log("___ Splitting document into smaller chunks ...___");
-   const splitter = new recursiveCharacterTextSplitter();
-   const splitDocs = await splitter.splitDocuments(docs);
-   console.log(`Split into ${splitDocs.length} chunks.`);
-   return splitDocs;
+  console.log("📥 Fetching PDF content from Appwrite Storage...");
+  // 2️⃣ Get file as ArrayBuffer (server-side)
+  const fileBuffer = await storage.getFileView(appwriteConfig.bucketID!, fileId);
+  console.log("✅ File fetched, size:", fileBuffer.byteLength, "bytes");
+
+  // 3️⃣ Convert ArrayBuffer to Blob for PDFLoader
+  const blob = new Blob([fileBuffer], { type: "application/pdf" });
+  console.log("✅ Converted to Blob, size:", blob.size, "bytes");
+
+  // 4️⃣ Load PDF
+  try {
+    console.log("📄 Loading PDF into PDFLoader...");
+    const loader = new PDFLoader(blob);
+    const docs = await loader.load();
+    console.log("PDF loaded successfully. Total pages:", docs.length);
+
+    // 5️⃣ Split chunks
+    console.log("✂ Splitting PDF text into chunks...");
+    const splitter = new RecursiveCharacterTextSplitter();
+    const splitDocs = await splitter.splitDocuments(docs);
+    console.log(`PDF split into ${splitDocs.length} chunks`);
+
+    return splitDocs;
+  } catch (error) {
+    console.error("❌ Failed to load PDF:", error);
+    throw error; // re-throw for upstream handling
+  }
 }
 
+
+
+/* -------------------------------------------------------
+   Main: Generate Embeddings in Pinecone (Safe Version)
+------------------------------------------------------- */
 export async function generateEmbeddingsInPineconeVectoreStore(docId: string) {
-    //1-get the user auth state
-    const { userId } = await auth();
-    if (!userId) throw new Error("User Not Found");
-    console.log("User ID:", userId);
+  // 1. Auth
+  const { userId } = await auth();
+  if (!userId) throw new Error("User not authenticated");
+  console.log("User:", userId);
 
-    //2-Generate Embeddings ( numerical representations) for the split doocuments
-    let pinconeVectoreStore;
-   
+  // 2. Connect to Pinecone
+  const index = pinconeClient.Index(indexName);
+  const exists = await namespaceExists(index, docId);
 
-    // console.log("___ Generating embeddings for the split documents ...___");
-    // const embeddings = new Pipeline("Xenova/embeddings-all-mpnet-base-v2", "text", {
-    //     quantized: true,
-    // }); 
+  /* ------------------------------------------------------------------
+     CASE 1 — Namespace exists → return retriever interface only
+     ------------------------------------------------------------------ */
+  if (exists) {
+    console.log(`✔ Namespace ${docId} already exists — Skipping creation`);
 
-    //3-Connect to Pinecone
-    const index = await pinconeClient.Index(indexName);
-    //this is useful because we want to generate embeddings only once
-    const namespaceAlreadyExists = await nameSpaceExists(index, docId);
+    // This does NOT load documents — it only constructs a retriever wrapper
+    const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
+      pineconeIndex: index,
+      namespace: docId,
+    });
 
-    if (namespaceAlreadyExists) {
-        //return a retrieval interface for your RAG chain.
-        console.log(`Namespace ${docId} already exists. Skipping embedding generation.`);
-        
-        pinconeVectoreStore = await PineconeStore.fromExistingIndex(embeddings, {
-            pineconeIndex: index,
-            namespace: docId,
-        });
+    // Return only the store (small object)
+    return { success: true, exists: true, vectorStore };
+  }
 
-        return pinconeVectoreStore;
-    } else {
-            // If the namespace does not exist, download the PDF from firestore via the stored Download URL & generate the embeddings and store them in the Pinecone vector store
-             const splitDocs = await generateDocs(docId);
-             console.log(
-                `--- Storing the embeddings in namespace ${docId} in the ${indexName} Pinecone vector store... ---`
-              );
-              const vectors = [];
-              for(const doc of splitDocs) {
-                const values = await embeddings.embedQuery(doc.pageContent);
-                console.log("pageContent:", doc.pageContent);
-                vectors.push({
-                    id: crypto.randomUUID(),
-                    values,
-                    metadata: {text: doc.pageContent, ...doc.metadata},
-                })
-                await index.namespace(docId).upsert(vectors);
-              }
+  /* ------------------------------------------------------------------
+     CASE 2 — Namespace does NOT exist → Load PDF → Split → Embed → Store
+     ------------------------------------------------------------------ */
+  console.log(`⬇ Namespace ${docId} missing — Generating documents`);
+  const splitDocs = await generateDocs(docId);
 
-    }
+  console.log(
+    `📥 Storing ${splitDocs.length} chunks in Pinecone namespace: ${docId}`
+  );
+
+  // PineconeStore.fromDocuments() handles:
+  // - embedding each chunk
+  // - building vectors
+  // - storing them with metadata
+  const vectorStore = await PineconeStore.fromDocuments(splitDocs, embeddings, {
+    pineconeIndex: index,
+    namespace: docId,
+  });
+
+  console.log("✔ Embeddings stored successfully.");
+
+  return { success: true, created: true, vectorStore };
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { uploadFile } from "@/actions/uploadAndSave";
 import { set } from "zod";
+import { generateEmbeddings } from "@/actions/generateEmbeddings";
 
 export enum StatusText {
     UPLOADING = "Uploading file...",
@@ -30,6 +31,8 @@ export default function () {
     setStatus(StatusText.SAVING);
     setStatus(StatusText.GENERATING);
     //generate Ai embeddings
+    await generateEmbeddings(res.metadata.$id);
+
     return res;
 };
   return{
