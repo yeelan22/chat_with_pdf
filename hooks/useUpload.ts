@@ -25,7 +25,7 @@ export default function () {
     setProgress(30);
 
     const res = await uploadFile(file);
-    setFileId(res.metadata.$id);
+    setFileId(res.fileId);
     setProgress(100);
     setStatus(StatusText.UPLOADED);
     setStatus(StatusText.SAVING);
