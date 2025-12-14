@@ -122,58 +122,185 @@ async function namespaceExists(
    Load + Split PDF into chunks
 ------------------------------------------------------- */
 async function generateDocs(docId: string) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  console.log("🔵 generateDocs called", {
+    file: "langchain.ts",
+    function: "generateDocs",
+    docId: docId
+  });
 
-  const { db, storage } = await getServerClients();
-
-  // docId is actually a fileId - search by fileId field, not document ID
-  const result = await db.listDocuments(
-    appwriteConfig.databaseId!,
-    appwriteConfig.pdfsCollectionId!,
-    [
-      Query.equal("fileId", docId),
-    ]
-  );
-
-  if (!result.documents || result.documents.length === 0) {
-    throw new Error(`PDF document with fileId "${docId}" not found`);
+  // Authenticate
+  let userId;
+  try {
+    const authResult = await auth();
+    userId = authResult.userId;
+    if (!userId) {
+      console.error("❌ User not authenticated");
+      throw new Error("Unauthorized");
+    }
+    console.log("✅ User authenticated:", userId);
+  } catch (error: any) {
+    console.error("❌ Authentication failed:", error);
+    throw new Error(`Authentication failed: ${error.message}`);
   }
 
-  const doc = result.documents[0];
-  const { fileId } = doc;
-  if (!fileId) throw new Error("No fileId found in document");
+  // Get clients
+  let db, storage;
+  try {
+    const clients = await getServerClients();
+    db = clients.db;
+    storage = clients.storage;
+    console.log("✅ Got Appwrite clients");
+  } catch (error: any) {
+    console.error("❌ Failed to get Appwrite clients:", error);
+    throw new Error(`Failed to get Appwrite clients: ${error.message}`);
+  }
 
-  // Get file as ArrayBuffer (server-side)
-  const fileBuffer = await storage.getFileView(appwriteConfig.bucketID!, fileId);
+  console.log("🔵 Searching for PDF document...", {
+    docId: docId,
+    database: appwriteConfig.databaseId,
+    collection: appwriteConfig.pdfsCollectionId,
+  });
 
-  // Convert ArrayBuffer to Blob for PDFLoader
-  const blob = new Blob([fileBuffer], { type: "application/pdf" });
+  let doc;
+  try {
+    // Try 1: Search by document $id (most likely case)
+    try {
+      console.log("🔵 Attempt 1: Fetching document by $id:", docId);
+      doc = await db.getDocument(
+        appwriteConfig.databaseId!,
+        appwriteConfig.pdfsCollectionId!,
+        docId
+      );
+      console.log("✅ Found document by $id:", doc.$id);
+    } catch (error: any) {
+      console.log("⚠️ Document not found by $id, trying fileId field...");
+      
+      // Try 2: Search by fileId field
+      const result = await db.listDocuments(
+        appwriteConfig.databaseId!,
+        appwriteConfig.pdfsCollectionId!,
+        [Query.equal("fileId", docId)]
+      );
+
+      if (!result.documents || result.documents.length === 0) {
+        console.error("❌ PDF document not found", {
+          searchedById: docId,
+          searchedByFileId: docId,
+          resultCount: 0
+        });
+        throw new Error(
+          `PDF document not found. Searched by ID and fileId: "${docId}". ` +
+          `Please verify the document exists in collection: ${appwriteConfig.pdfsCollectionId}`
+        );
+      }
+
+      doc = result.documents[0];
+      console.log("✅ Found document by fileId field:", doc.$id);
+    }
+  } catch (error: any) {
+    console.error("❌ Error searching for PDF document:", {
+      docId: docId,
+      error: error.message,
+      code: error.code,
+      type: error.type
+    });
+    throw new Error(`Failed to find PDF document: ${error.message}`);
+  }
+
+  // Get the fileId from the document
+  const fileId = doc.fileId || doc.$id;
+  
+  if (!fileId) {
+    console.error("❌ No fileId found in document:", doc);
+    throw new Error("Document is missing fileId field");
+  }
+
+  console.log("🔵 Fetching file from storage...", {
+    bucketId: appwriteConfig.bucketID,
+    fileId: fileId
+  });
+
+  // Get file from storage
+  let fileBuffer;
+  try {
+    fileBuffer = await storage.getFileView(
+      appwriteConfig.bucketID!,
+      fileId
+    );
+    console.log("✅ File retrieved from storage", {
+      fileId: fileId,
+      size: fileBuffer.byteLength
+    });
+  } catch (error: any) {
+    console.error("❌ Failed to get file from storage:", {
+      bucketId: appwriteConfig.bucketID,
+      fileId: fileId,
+      error: error.message,
+      code: error.code,
+      type: error.type
+    });
+    throw new Error(
+      `Failed to retrieve PDF file from storage. FileId: ${fileId}. ` +
+      `Error: ${error.message}`
+    );
+  }
+
+  // Convert to Blob
+  let blob;
+  try {
+    blob = new Blob([fileBuffer], { type: "application/pdf" });
+    console.log("✅ Converted file to Blob");
+  } catch (error: any) {
+    console.error("❌ Failed to create Blob:", error);
+    throw new Error(`Failed to create PDF Blob: ${error.message}`);
+  }
 
   // Load PDF
-  const loader = new PDFLoader(blob);
-  const docs = await loader.load();
-
-  // Split chunks
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 800,
-    chunkOverlap: 100,
-  });
-  const splitDocs = await splitter.splitDocuments(docs);
-  const cleanDocs = splitDocs.filter(
-    (d) => typeof d.pageContent === "string" && d.pageContent.trim().length > 0
-  );
-
-  if (!cleanDocs.length) {
-    throw new Error("❌ No valid text extracted from PDF");
+  let docs;
+  try {
+    console.log("🔵 Loading PDF with PDFLoader...");
+    const loader = new PDFLoader(blob);
+    docs = await loader.load();
+    console.log("✅ PDF loaded successfully", {
+      pageCount: docs.length
+    });
+  } catch (error: any) {
+    console.error("❌ Failed to load PDF:", error);
+    throw new Error(
+      `Failed to parse PDF file. The file may be corrupted or password-protected. ` +
+      `Error: ${error.message}`
+    );
   }
 
-  console.log("✅ Clean PDF chunks", {
-    total: splitDocs.length,
-    kept: cleanDocs.length,
+  // Split into chunks
+  let splitDocs;
+  try {
+    console.log("🔵 Splitting PDF into chunks...");
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 1000,
+      chunkOverlap: 200,
+    });
+    splitDocs = await splitter.splitDocuments(docs);
+    console.log("✅ PDF split into chunks", {
+      chunkCount: splitDocs.length
+    });
+  } catch (error: any) {
+    console.error("❌ Failed to split documents:", error);
+    throw new Error(`Failed to split PDF into chunks: ${error.message}`);
+  }
+
+  if (splitDocs.length === 0) {
+    console.error("❌ No chunks generated from PDF");
+    throw new Error("PDF contains no extractable text");
+  }
+
+  console.log("✅ generateDocs completed successfully", {
+    docId: docId,
+    fileId: fileId,
+    chunkCount: splitDocs.length
   });
 
-  return cleanDocs
+  return splitDocs;
 }
 
 async function fetchMessagesFromDB(docId: string) {
