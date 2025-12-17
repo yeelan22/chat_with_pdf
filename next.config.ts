@@ -13,13 +13,22 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  experimental: {
-    serverComponentsExternalPackages: [
-      "@xenova/transformers",
-      "onnxruntime-node",
-      "sharp",
-    ],
+  
+  // Moved from experimental.serverComponentsExternalPackages
+  serverExternalPackages: [
+    "@xenova/transformers",
+    "onnxruntime-node",
+    "sharp",
+  ],
+
+  // Required for Next.js 16 when you have webpack config
+  turbopack: {
+    resolveAlias: {
+      canvas: "./empty.js",
+    },
   },
+
+  // Keep webpack for non-Turbopack builds
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = [
