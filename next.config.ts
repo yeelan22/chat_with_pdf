@@ -1,6 +1,11 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    resolveAlias: {
+      canvas: "./empty.js",
+    },
+  },
 
-const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
@@ -12,41 +17,6 @@ const nextConfig: NextConfig = {
         hostname: "img.clerk.com",
       },
     ],
-  },
-  
-  // Moved from experimental.serverComponentsExternalPackages
-  serverExternalPackages: [
-    "@xenova/transformers",
-    "onnxruntime-node",
-    "sharp",
-  ],
-
-  // Required for Next.js 16 when you have webpack config
-  turbopack: {
-    resolveAlias: {
-      canvas: "./empty.js",
-    },
-  },
-
-  // Keep webpack for non-Turbopack builds
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = [
-        ...(Array.isArray(config.externals) ? config.externals : []),
-        "@xenova/transformers",
-        "onnxruntime-node",
-        "sharp",
-      ];
-    }
-
-    config.module = config.module || {};
-    config.module.rules = config.module.rules || [];
-    config.module.rules.push({
-      test: /\.node$/,
-      loader: "ignore-loader",
-    });
-
-    return config;
   },
 };
 

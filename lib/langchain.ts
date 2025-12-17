@@ -1,7 +1,7 @@
 import { ChatGroq } from "@langchain/groq";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { pipeline } from "@xenova/transformers";
+import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf"
 import { Embeddings } from "@langchain/core/embeddings";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { createHistoryAwareRetriever } from "@langchain/classic/chains/history_aware_retriever";
@@ -29,47 +29,13 @@ const model = new ChatGroq({
 });
 
 /* -------------------------------------------------------
-   Embeddings Class (Xenova)
+   Embeddings __HuggingFace Inference Embeddings (Xenova)
 ------------------------------------------------------- */
-const extractor = await pipeline(
-  "feature-extraction",
-  "Xenova/all-MiniLM-L6-v2",
-  { quantized: true }
-);
 
-class XenovaEmbeddings extends Embeddings {
-  constructor() {
-    super({});
-  }
-
-  async embedDocuments(texts: string[]): Promise<number[][]> {
-    return Promise.all(
-      texts.map(async (text) => {
-        if(!text || !text.trim()) {
-          throw new Error ("Attempted to embed empty text");
-        }
-        const output = await extractor(text, {
-          pooling: "mean",
-          normalize: true,
-        });
-        return Array.from(output.data);
-      })
-    );
-  }
-
-  async embedQuery(text: string): Promise<number[]> {
-    if (!text || !text.trim()) {
-      throw new Error("❌ Attempted to embed empty query");
-    }
-    const output = await extractor(text, {
-      pooling: "mean",
-      normalize: true,
-    });
-    return Array.from(output.data);
-  }
-}
-
-const embeddings = new XenovaEmbeddings();
+const embeddings = new HuggingFaceInferenceEmbeddings({
+  apiKey: process.env.HUGGINGFACE_API_KEY,
+  model: "sentence-transformers/all-MiniLM-L6-v2",
+})
 
 /* -------------------------------------------------------
    Check if Pinecone namespace exists
