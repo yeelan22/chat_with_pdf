@@ -2,9 +2,7 @@ import { ChatGroq } from "@langchain/groq";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf"
-import { Embeddings } from "@langchain/core/embeddings";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { createHistoryAwareRetriever } from "@langchain/classic/chains/history_aware_retriever";
 import { createStuffDocumentsChain } from "@langchain/classic/chains/combine_documents";
 import { createRetrievalChain } from "@langchain/classic/chains/retrieval";
 import { PineconeStore } from "@langchain/pinecone";
