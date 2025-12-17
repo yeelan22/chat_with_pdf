@@ -3,7 +3,7 @@ import { PlusCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {useRouter} from "next/navigation";
 
-function PlaceHolderDocument () {
+function PlaceholderDocument () {
     const router = useRouter();
     const handleClick = () => {
         //check if user is Free tier and if theyre over the file limit, push
@@ -23,4 +23,4 @@ function PlaceHolderDocument () {
     )
 }
 
-export default PlaceHolderDocument;
+export default PlaceholderDocument;

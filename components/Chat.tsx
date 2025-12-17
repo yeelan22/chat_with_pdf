@@ -4,27 +4,25 @@ import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Loader2Icon } from "lucide-react";
-// import { useToast } from "./ui/use-toast";
 import { askQuestion } from "@/actions/askQuestion";
 import ChatMessage from "./ChatMessage";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { Message } from "@/types/chat";
+import { useUser } from "@clerk/nextjs";
 
 interface ChatProps {
   id: string;
 }
 
 export default function Chat({ id }: ChatProps) {
-  // const { toast } = useToast();
+  const { user } = useUser();
   const [input, setInput] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const [isPending, startTransition] = useTransition();
   const bottomOfChatRef = useRef<HTMLDivElement>(null);
 
   // Get real-time messages from Appwrite
-  console.log("Chat component rendering with id:", id);
   const { messages, loading, error } = useChatMessages(id);
-  console.log("Current messages:", messages);
 
   // Combine real messages with optimistic updates
   const displayMessages = [...messages, ...optimisticMessages];
@@ -36,21 +34,22 @@ export default function Chat({ id }: ChatProps) {
   }, [displayMessages]);
 
   useEffect(() => {
-    if (error) {
-      // toast({
-      //   variant: "destructive",
-      //   title: "Connection Error",
-      //   description: "Failed to load chat messages",
-      // });
-      console.log("Failed to load chat messages", error)
+    if(!displayMessages) return;
+
+    //get second las message to check id AI is thinking
+    const lastMessage = displayMessages[displayMessages.length -1];
+
+    if (lastMessage?.role === "ai" && lastMessage?.message === "Thinking...") {
+      //return as this is a dummy placeholder message
+      return;
     }
-  }, [error]);
+    
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    const question = input.trim();
-    if (!question) return;
+    const question = input;
 
     setInput("");
 
@@ -76,7 +75,6 @@ export default function Chat({ id }: ChatProps) {
         if (!success) {
           // Clear optimistic messages and show error
           setOptimisticMessages([]);
-          
          
           console.log("Error", "Failed to send message", message);
         } else {
@@ -86,27 +84,24 @@ export default function Chat({ id }: ChatProps) {
       } catch (err) {
         setOptimisticMessages([]);
         console.log("Error", "Failed to send message", err);
-        // toast({
-        //   variant: "destructive",
-        //   title: "Error",
-        //   description: "Failed to send message",
-        // });
       }
     });
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-scroll">
       {/* Chat contents */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 w-full">
+        {/* Chat messages */}
         {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2Icon className="animate-spin h-20 w-20 text-indigo-600" />
+          <div className="flex items-center justify-center">
+            <Loader2Icon className="animate-spin h-20 w-20 text-indigo-600 mt-20" />
           </div>
         ) : (
           <div className="p-5">
             {displayMessages.length === 0 && (
               <ChatMessage
+                key={"placeholder"}
                 message={{
                   role: "ai",
                   message: "Ask me anything about the document!",
@@ -139,7 +134,7 @@ export default function Chat({ id }: ChatProps) {
 
         <Button type="submit" disabled={!input || isPending}>
           {isPending ? (
-            <Loader2Icon className="animate-spin text-white" />
+            <Loader2Icon className="animate-spin text-indigo-600" />
           ) : (
             "Ask"
           )}
