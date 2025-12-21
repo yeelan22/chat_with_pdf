@@ -5,9 +5,13 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { Query } from "node-appwrite";
 
+type RouteParams = {
+    params: Promise<{ fileId: string }>;
+};
+
 export async function GET(
     request: NextRequest,
-    { params }: { params: { fileId: string } }
+    { params }: RouteParams
 ) {
     try {
         const { userId } = await auth();
@@ -16,7 +20,7 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { fileId } = params;
+        const { fileId } = await params;
         const { storage, db } = await getServerClients();
 
         // Verify user owns this file
