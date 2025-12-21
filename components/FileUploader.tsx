@@ -15,28 +15,42 @@ import useUpload, { StatusText } from "@/hooks/useUpload";
 import useSubscription from "@/hooks/useSubscription";
 import { toast } from "sonner";
 
-
 const FileUploader = () => {
   const { progress, status, handleUpload, fileId } = useUpload();
-  const {isOverFileLimit } = useSubscription();
+  const { isOverFileLimit } = useSubscription();
   const router = useRouter();
-  
-  useEffect(() => {
-    if (fileId) {
-      router.push(`/dashboard/files/${fileId}`);
-    }
-  }, [fileId, router]);
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (file) {
-      if(!isOverFileLimit) {
-        await handleUpload(file);
-      } else {
-        toast.error("You've reached the maximum number of files allowed for your account, Please upgrade to add more documents")
-      }
+  // Only redirect after embeddings are generated
+  useEffect(() => {
+    if (fileId && status === StatusText.GENERATING) {
+      // Wait a bit to show the "generating" status, then redirect
+      const timer = setTimeout(() => {
+        router.push(`/dashboard/files/${fileId}`);
+      }, 1500);
+
+      return () => clearTimeout(timer);
     }
-  }, []);
+  }, [fileId, status, router]);
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      const file = acceptedFiles[0];
+      if (file) {
+        if (!isOverFileLimit) {
+          try {
+            await handleUpload(file);
+          } catch (error) {
+            toast.error("Failed to upload file. Please try again.");
+          }
+        } else {
+          toast.error(
+            "You've reached the maximum number of files allowed for your account. Please upgrade to add more documents."
+          );
+        }
+      }
+    },
+    [isOverFileLimit, handleUpload]
+  );
 
   const {
     getRootProps,
@@ -63,37 +77,18 @@ const FileUploader = () => {
     ),
   };
 
-  // ------------------------------
-  // Improved progress logic
-  // ------------------------------
-  const isUploading =
-    progress !== null && progress > 0 && progress < 100 && status === StatusText.UPLOADING;
+  const isUploading = progress !== null && progress < 100;
+  const isProcessing = status !== null && status !== StatusText.UPLOADING;
+  const showUploadUI = status !== null;
 
-  const isProcessing =
-    status === StatusText.UPLOADED || status === StatusText.SAVING;
-
-  // ------------------------------
-  // Auto-reset after completion
-  // ------------------------------
-  useEffect(() => {
-    if (status === StatusText.SAVING) {
-      // After saving metadata, wait 1 second then reset UI
-      const timer = setTimeout(() => {
-        window.location.reload(); // or reset state in your hook
-      }, 1000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [status]);
+  const currentIcon = status ? statusIcons[status as StatusText] : null;
 
   return (
     <div className="flex flex-col gap-4 items-center max-w-7xl mx-auto">
-
-      {/* ---------------------- UPLOAD UI ---------------------- */}
-      {(isUploading || isProcessing) && (
+      {/* UPLOAD UI */}
+      {showUploadUI && (
         <div className="mt-32 flex flex-col justify-center items-center gap-5">
-
-          {/* Radial Progress */}
+          {/* Radial Progress - only show during upload */}
           {isUploading && (
             <div
               className="radial-progress bg-indigo-300 text-white border-indigo-600 border-4"
@@ -105,20 +100,20 @@ const FileUploader = () => {
                 "--thickness": "1.3rem",
               }}
             >
-              {progress} %
+              {progress}%
             </div>
           )}
 
-          {/* Status Icon */}
-          {status && statusIcons[status]}
+          {/* Status Icon - show after upload completes */}
+          {isProcessing && currentIcon }
 
           {/* Status Text */}
-          <p className="text-indigo-600 animate-pulse">{status}</p>
+          <p className="text-indigo-600 animate-pulse">{status as string}</p>
         </div>
       )}
 
-      {/* ---------------------- DROPZONE ---------------------- */}
-      {!isUploading && !isProcessing && (
+      {/* DROPZONE - only show when not uploading */}
+      {!showUploadUI && (
         <div
           {...getRootProps()}
           className={`p-10 border-2 border-dashed mt-10 w-[90%] border-indigo-600 text-indigo-600 rounded-lg h-96 flex items-center justify-center ${

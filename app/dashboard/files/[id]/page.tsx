@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getServerClients } from "@/lib/appwriteServer"
 import { appwriteConfig } from "@/lib/appwriteConfig";
 import Chat from "@/components/Chat";
+import { Query } from "node-appwrite";
 // import 'react-pdf/dist/esm/Page/TextLayer.css';
 // import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 
@@ -16,7 +17,7 @@ async function ChatToFilePage({params}: {params: Promise<{id: string}>}) {
     // Now you can use id
     console.log(id);
 
-    const { storage } = await getServerClients();
+    const { db, storage } = await getServerClients();
     const url = await storage.getFileView(appwriteConfig.bucketID!, id);
     console.log("File URL:", url);
     
