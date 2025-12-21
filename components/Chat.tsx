@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { toast } from "sonner";
 import { Loader2Icon } from "lucide-react";
 import { askQuestion } from "@/actions/askQuestion";
 import ChatMessage from "./ChatMessage";
@@ -75,7 +76,7 @@ export default function Chat({ id }: ChatProps) {
         if (!success) {
           // Clear optimistic messages and show error
           setOptimisticMessages([]);
-         
+          toast.error(message);
           console.log("Error", "Failed to send message", message);
         } else {
           // Clear optimistic messages - real message will come via subscription

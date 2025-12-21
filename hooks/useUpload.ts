@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { uploadFile } from "@/actions/uploadAndSave";
-import { set } from "zod";
 import { generateEmbeddings } from "@/actions/generateEmbeddings";
 
 export enum StatusText {

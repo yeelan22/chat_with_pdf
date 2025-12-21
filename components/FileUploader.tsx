@@ -12,9 +12,13 @@ import {
   SaveIcon,
 } from "lucide-react";
 import useUpload, { StatusText } from "@/hooks/useUpload";
+import useSubscription from "@/hooks/useSubscription";
+import { toast } from "sonner";
+
 
 const FileUploader = () => {
   const { progress, status, handleUpload, fileId } = useUpload();
+  const {isOverFileLimit } = useSubscription();
   const router = useRouter();
   
   useEffect(() => {
@@ -26,7 +30,11 @@ const FileUploader = () => {
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      await handleUpload(file);
+      if(!isOverFileLimit) {
+        await handleUpload(file);
+      } else {
+        toast.error("You've reached the maximum number of files allowed for your account, Please upgrade to add more documents")
+      }
     }
   }, []);
 

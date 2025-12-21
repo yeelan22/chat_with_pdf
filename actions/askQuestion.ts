@@ -6,6 +6,8 @@ import { getServerClients } from "@/lib/appwriteServer";
 import { appwriteConfig } from "@/lib/appwriteConfig";
 import { generateLangchainCompletion } from "@/lib/langchain";
 
+const FREE_LIMIT = 2;
+const PRO_LIMIT = 20;
 export async function askQuestion(
   id: string,
   question: string
@@ -38,9 +40,32 @@ export async function askQuestion(
         Query.equal("fileId", id),
         Query.equal("role", "human"),
         Query.orderDesc("$createdAt"),
-        Query.limit(10), // Limit to last 10 messages for context
       ]
     );
+    //check membership limits for messages in a document
+    const userRef = await db.getDocument(
+      appwriteConfig.databaseId!,
+      appwriteConfig.usersCollectionId!,
+      userId
+    )
+    //limit the PRO/FREE users
+    if(!userRef?.hasActiveMembership){
+      if(history.total >= FREE_LIMIT) {
+        return {
+          success: false,
+          message: `You'll need to upgrade to PRO to ask more than ${FREE_LIMIT} questions!`
+        }
+      }
+    }
+    if (userRef?.hasActiveMembership) {
+      console.log("Debug 4", history.total, PRO_LIMIT);
+      if (history.total >= PRO_LIMIT) {
+        return {
+          success: false,
+          message: `You've reached the PRO limit of ${PRO_LIMIT} questions per document! 😢`,
+        };
+      }
+    }
     console.log(`✅ Found ${history.documents.length} previous messages`);
   } catch (error: any) {
     console.error("❌ Failed to fetch message history", error);

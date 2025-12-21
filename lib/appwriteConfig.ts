@@ -6,5 +6,6 @@ export const appwriteConfig = {
     adminKey: process.env.APPWRITE_API_KEY,
     pdfsCollectionId: process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
     chatsCollectionId: process.env.NEXT_PUBLIC_APPWRITE_CHATS_COLLECTION_ID,
+    usersCollectionId: process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID,
     chatsDatabaseID: process.env.NEXT_PUBLIC_APPWRITE_CHATS_DATABASE_ID,
 }
